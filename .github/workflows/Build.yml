@@ -1,0 +1,103 @@
+name: Build (Android arm64)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch: {}
+
+env:
+  NDK_VERSION: r27
+  ANDROID_ABI: arm64-v8a
+  ANDROID_PLATFORM: android-26
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ninja-build wget unzip
+
+      - name: Cache Android NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: android-ndk-${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
+
+      - name: Download Android NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          wget -q "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" -O ndk.zip
+          unzip -q ndk.zip
+          rm ndk.zip
+
+      - name: Set ANDROID_NDK env
+        run: echo "ANDROID_NDK=${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
+
+      - name: Clone Vulkan-Headers
+        run: |
+          if [ ! -d Vulkan-Headers ]; then
+            git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+          fi
+
+      - name: Cache glslang build/install
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: |
+            glslang
+          key: glslang-${{ env.NDK_VERSION }}-${{ env.ANDROID_ABI }}-${{ hashFiles('.github/workflows/build.yml') }}
+
+      - name: Clone + build glslang for Android
+        if: steps.cache-glslang.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/KhronosGroup/glslang.git
+          cd glslang
+          ./update_glslang_sources.py
+          cmake -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ANDROID_ABI" \
+            -DANDROID_PLATFORM="$ANDROID_PLATFORM"
+          cmake --build build -j"$(nproc)"
+          cmake --install build --prefix ./install
+
+      - name: Wire dependency paths into toolchain cache file
+        run: |
+          GLSLANG_CMAKE_DIR="${{ github.workspace }}/glslang/install/lib/cmake/glslang"
+          VULKAN_INCLUDE_DIR="${{ github.workspace }}/Vulkan-Headers/include"
+          {
+            echo ""
+            echo "# --- Auto-added by CI ---"
+            echo "set(glslang_DIR \"$GLSLANG_CMAKE_DIR\" CACHE PATH \"\")"
+            echo "set(Vulkan_INCLUDE_DIR \"$VULKAN_INCLUDE_DIR\" CACHE PATH \"\")"
+          } >> cmake/android-panvk.toolchain.cmake
+
+      - name: Configure main project
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ANDROID_ABI" \
+            -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
+            -C cmake/android-panvk.toolchain.cmake
+
+      - name: Build main project
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Verify output is real ARM64
+        run: find build -name "*.so" -exec file {} \;
+
+      - name: Upload built library
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gles2panvk-arm64
+          path: |
+            build/**/*.so
+          if-no-files-found: warn
