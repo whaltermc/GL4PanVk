@@ -30,4 +30,12 @@ uint64_t Context::current_pipeline_key() const {
     return h;
 }
 
-} // namespace g2p
+} namespace {
+    thread_local g2p::Context* tls_current_context = nullptr;
+}
+extern "C" void* g2p_get_current_context() {
+    if (!tls_current_context) {
+        tls_current_context = new g2p::Context();
+    }
+    return tls_current_context;
+}
