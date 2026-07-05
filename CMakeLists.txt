@@ -34,3 +34,4 @@ target_compile_options(gles2panvk PRIVATE
 set_target_properties(gles2panvk PROPERTIES
     OUTPUT_NAME "GLESv2"
 )
+target_link_libraries(gles2panvk PRIVATE glslang SPIRV glslang-default-resource-limits vulkan)
