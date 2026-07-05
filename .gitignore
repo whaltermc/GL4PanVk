@@ -1,0 +1,40 @@
+# --- Build output ---
+build/
+build-*/
+out/
+*.so
+*.a
+*.o
+*.obj
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# --- Android NDK (huge, download separately, never commit) ---
+android-ndk-*/
+android-ndk-*.zip
+
+# --- External dependencies cloned/built locally ---
+glslang/
+Vulkan-Headers/
+SPIRV-Tools/
+SPIRV-Cross/
+shaderc/
+
+# --- CMake install trees ---
+install/
+*/install/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
